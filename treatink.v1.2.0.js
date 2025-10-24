@@ -465,9 +465,7 @@
     _openModal: async function() {
       const modal = document.getElementById(MODAL_ID);
       if (!modal) return;
-
-      modal.classList.add('active');
-
+      
       // Create personalization session
       const session = {
         uuid: this._generateUUID(),
@@ -475,17 +473,23 @@
         customized: false,
         createdAt: new Date().toISOString()
       };
-
+      
       this._savePersonalizationSession(session);
-
-      // Create session in database
-      await this._createSessionInDatabase(session);
-
+      
+      // Create session in database and wait for success before showing modal
+      const sessionCreated = await this._createSessionInDatabase(session);
+      if (!sessionCreated) {
+        console.error('[TreatInk SDK] Failed to create session, aborting');
+        return;
+      }
+      
+      // Show modal only after successful session creation
+      modal.classList.add('active');
+      
       // Build customizer URL
       const customizeUrl = TREATINK_CONFIG[this.config.environment].customizeUrl;
       
       const customizerUrl = `${customizeUrl}?apiMode=true&uuid=${session.uuid}&platform=${this.config.platform}&productId=${this.config.productId}&hostname=${this.hostname}`;
-
       const iframe = modal.querySelector('.treatink-modal-iframe');
       if (iframe) {
         iframe.src = customizerUrl;
@@ -512,14 +516,18 @@
             salesChannelHostname: this.hostname
           })
         });
-
+        
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || 'Failed to create session in database');
+          console.error('[TreatInk SDK] Session creation failed:', errorData.error);
+          return false;
         }
+        
         this._log('Session created in database');
+        return true;
       } catch (error) {
         console.error('[TreatInk SDK] Error creating session:', error);
+        return false;
       }
     },
 
