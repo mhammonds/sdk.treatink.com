@@ -466,7 +466,7 @@
       const modal = document.getElementById(MODAL_ID);
       if (!modal) return;
       
-      // Create personalization session
+      // Create personalization session locally
       const session = {
         uuid: this._generateUUID(),
         productId: this.config.productId,
@@ -476,9 +476,9 @@
       
       this._savePersonalizationSession(session);
       
-      // Create session in database and wait for success before showing modal
-      const sessionCreated = await this._createSessionInDatabase(session);
-      if (!sessionCreated) {
+      // Create session in database and get back the actual sessionUuid
+      const dbSession = await this._createSessionInDatabase(session);
+      if (!dbSession) {
         console.error('[TreatInk SDK] Failed to create session, aborting');
         return;
       }
@@ -486,10 +486,10 @@
       // Show modal only after successful session creation
       modal.classList.add('active');
       
-      // Build customizer URL
+      // Build customizer URL using the sessionUuid from database
       const customizeUrl = TREATINK_CONFIG[this.config.environment].customizeUrl;
       
-      const customizerUrl = `${customizeUrl}?apiMode=true&uuid=${session.uuid}&platform=${this.config.platform}&productId=${this.config.productId}&hostname=${this.hostname}`;
+      const customizerUrl = `${customizeUrl}?apiMode=true&uuid=${dbSession.sessionUuid}&platform=${this.config.platform}&productId=${this.config.productId}&hostname=${this.hostname}`;
       const iframe = modal.querySelector('.treatink-modal-iframe');
       if (iframe) {
         iframe.src = customizerUrl;
@@ -509,7 +509,6 @@
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            sessionUuid: session.uuid,
             externalProductId: session.productId,
             platform: this.config.platform,
             salesChannelHostname: this.hostname
@@ -519,14 +518,15 @@
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
           console.error('[TreatInk SDK] Session creation failed:', errorData.error);
-          return false;
+          return null;
         }
         
-        this._log('Session created in database');
-        return true;
+        const responseData = await response.json();
+        this._log('Session created in database:', responseData.sessionUuid);
+        return responseData;
       } catch (error) {
         console.error('[TreatInk SDK] Error creating session:', error);
-        return false;
+        return null;
       }
     },
 
