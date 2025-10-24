@@ -743,18 +743,23 @@
      * Send order confirmation to TreatInk
      */
     confirmOrder: async function(orderData) {
-      if (!this.config.apiKey) {
-        console.error('[TreatInk SDK] API key required for order confirmation');
-        return null;
-      }
+      // For POC, don't require API key
+      // if (!this.config.apiKey) {
+      //   console.error('[TreatInk SDK] API key required for order confirmation');
+      //   return null;
+      // }
 
-      const personalizations = this.getAllPersonalizations();
-      const personalizedItems = Object.values(personalizations)
-        .filter(p => p.customized)
-        .map(p => ({
-          uuid: p.uuid,
-          productId: p.productId
-        }));
+      // Use provided personalizations or get all from localStorage
+      let personalizedItems = orderData.personalizations;
+      if (!personalizedItems) {
+        const personalizations = this.getAllPersonalizations();
+        personalizedItems = Object.values(personalizations)
+          .filter(p => p.customized)
+          .map(p => ({
+            uuid: p.uuid,
+            productId: p.productId
+          }));
+      }
 
       if (personalizedItems.length === 0) {
         this._log('No personalizations to confirm');
@@ -770,8 +775,7 @@
         const response = await fetch(endpoint, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.config.apiKey}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             platform: this.config.platform,
