@@ -510,9 +510,8 @@
           },
           body: JSON.stringify({
             sessionUuid: session.uuid,
-            productId: session.productId,
+            externalProductId: session.productId,
             platform: this.config.platform,
-            hostname: this.hostname,
             salesChannelHostname: this.hostname
           })
         });
