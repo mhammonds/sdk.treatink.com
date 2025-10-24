@@ -462,7 +462,7 @@
     /**
      * Open modal and load customizer
      */
-    _openModal: function() {
+    _openModal: async function() {
       const modal = document.getElementById(MODAL_ID);
       if (!modal) return;
 
@@ -478,6 +478,9 @@
 
       this._savePersonalizationSession(session);
 
+      // Create session in database
+      await this._createSessionInDatabase(session);
+
       // Build customizer URL
       const customizeUrl = TREATINK_CONFIG[this.config.environment].customizeUrl;
       
@@ -487,6 +490,36 @@
       if (iframe) {
         iframe.src = customizerUrl;
         this._log('Modal opened with customizer URL:', customizerUrl);
+      }
+    },
+
+    /**
+     * Create personalization session in database
+     */
+    _createSessionInDatabase: async function(session) {
+      try {
+        const supabaseUrl = TREATINK_CONFIG[this.config.environment].supabaseUrl;
+        const response = await fetch(`${supabaseUrl}/functions/v1/create-personalization-session`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            sessionUuid: session.uuid,
+            productId: session.productId,
+            platform: this.config.platform,
+            hostname: this.hostname,
+            salesChannelHostname: this.hostname
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Failed to create session in database');
+        }
+        this._log('Session created in database');
+      } catch (error) {
+        console.error('[TreatInk SDK] Error creating session:', error);
       }
     },
 
