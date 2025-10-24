@@ -34,7 +34,7 @@
   const TREATINK_CONFIG = {
     production: {
       baseUrl: 'https://treatink.com',
-      supabaseUrl: 'https://api.treatink.com', // Replace with actual Supabase URL
+      supabaseUrl: 'https://api.treatink.com',
       customizeUrl: 'https://treatink.com/customizer'
     },
     sandbox: {
@@ -143,14 +143,16 @@
      */
     _injectStyles: function() {
       const styles = `
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Mitr:wght@400;600;700&display=swap');
+
         .treatink-personalize-btn {
           display: inline-block;
           padding: 12px 24px;
           margin-bottom: 12px;
-          background-color: #FFA518;
-          color: #0D1221;
+          background-color: #EA8000;
+          color: #FFFDFB;
           border: none;
-          border-radius: 6px;
+          border-radius: 8px;
           font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
           font-size: 16px;
           font-weight: 600;
@@ -160,12 +162,13 @@
           width: 100%;
           max-width: 400px;
           box-sizing: border-box;
+          letter-spacing: 0.5px;
         }
 
         .treatink-personalize-btn:hover {
-          background-color: #EA8D00;
+          background-color: #D67A00;
           transform: translateY(-2px);
-          box-shadow: 0 4px 12px rgba(255, 165, 24, 0.3);
+          box-shadow: 0 8px 20px rgba(234, 128, 0, 0.25);
         }
 
         .treatink-personalize-btn:active {
@@ -177,9 +180,14 @@
           color: #0D1221;
         }
 
+        .treatink-personalize-btn.personalized:hover {
+          background-color: #7ACC05;
+          box-shadow: 0 8px 20px rgba(139, 234, 6, 0.25);
+        }
+
         .treatink-personalize-btn.personalized::before {
           content: "✓ ";
-          margin-right: 4px;
+          margin-right: 6px;
         }
 
         .treatink-personalize-btn:disabled {
@@ -195,11 +203,12 @@
           left: 0;
           width: 100%;
           height: 100%;
-          background-color: rgba(13, 18, 33, 0.85);
+          background-color: rgba(13, 18, 33, 0.9);
           z-index: 999999;
           justify-content: center;
           align-items: center;
           animation: treatinkFadeIn 0.3s ease;
+          backdrop-filter: blur(4px);
         }
 
         .treatink-modal-overlay.active {
@@ -212,53 +221,65 @@
           max-width: 1200px;
           height: 90vh;
           background: #FFFDFB;
-          border-radius: 12px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+          border-radius: 16px;
+          box-shadow: 0 25px 80px rgba(13, 18, 33, 0.35);
           animation: treatinkSlideUp 0.3s ease;
           overflow: hidden;
+          display: flex;
+          flex-direction: column;
         }
 
         .treatink-modal-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 16px 24px;
-          background: #8BEA06;
-          border-radius: 12px 12px 0 0;
+          padding: 24px 32px;
+          background: linear-gradient(135deg, #EA8000 0%, #D67A00 100%);
+          border-radius: 16px 16px 0 0;
+          flex-shrink: 0;
         }
 
         .treatink-modal-title {
           font-family: 'Mitr', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          font-size: 24px;
+          font-size: 28px;
           font-weight: 600;
-          color: #0D1221;
+          color: #FFFDFB;
           margin: 0;
+          letter-spacing: 0.5px;
         }
 
         .treatink-modal-close {
-          background: none;
-          border: none;
-          font-size: 32px;
-          color: #0D1221;
+          background: rgba(255, 253, 251, 0.15);
+          border: 2px solid rgba(255, 253, 251, 0.3);
+          font-size: 28px;
+          color: #FFFDFB;
           cursor: pointer;
           line-height: 1;
           padding: 0;
-          width: 32px;
-          height: 32px;
+          width: 40px;
+          height: 40px;
           display: flex;
           align-items: center;
           justify-content: center;
+          border-radius: 8px;
+          transition: all 0.2s ease;
+          font-weight: 300;
         }
 
         .treatink-modal-close:hover {
-          opacity: 0.7;
+          background: rgba(255, 253, 251, 0.25);
+          border-color: rgba(255, 253, 251, 0.5);
+        }
+
+        .treatink-modal-close:active {
+          transform: scale(0.95);
         }
 
         .treatink-modal-iframe {
           width: 100%;
-          height: calc(100% - 64px);
+          height: 100%;
           border: none;
-          border-radius: 0 0 12px 12px;
+          flex-grow: 1;
         }
 
         .treatink-modal-loading {
@@ -267,354 +288,232 @@
           left: 50%;
           transform: translate(-50%, -50%);
           text-align: center;
-          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        }
-
-        .treatink-modal-loading-spinner {
-          width: 40px;
-          height: 40px;
-          border: 4px solid #FFA518;
-          border-top-color: transparent;
-          border-radius: 50%;
-          animation: treatinkSpin 0.8s linear infinite;
-          margin: 0 auto 16px;
+          font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
         @keyframes treatinkFadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
+          }
         }
 
         @keyframes treatinkSlideUp {
-          from { 
+          from {
+            transform: translateY(30px);
             opacity: 0;
-            transform: translateY(50px);
           }
-          to { 
-            opacity: 1;
+          to {
             transform: translateY(0);
+            opacity: 1;
           }
-        }
-
-        @keyframes treatinkSpin {
-          to { transform: rotate(360deg); }
         }
 
         @media (max-width: 768px) {
           .treatink-modal-content {
-            width: 98%;
-            height: 95vh;
+            width: 100%;
+            height: 100%;
+            max-width: none;
+            border-radius: 0;
           }
-          
+
+          .treatink-modal-header {
+            padding: 16px 20px;
+            border-radius: 0;
+          }
+
           .treatink-modal-title {
-            font-size: 18px;
+            font-size: 22px;
+          }
+
+          .treatink-modal-close {
+            width: 36px;
+            height: 36px;
+            font-size: 24px;
           }
         }
       `;
 
-      const styleSheet = document.createElement('style');
-      styleSheet.textContent = styles;
-      styleSheet.setAttribute('id', 'treatink-styles');
-      document.head.appendChild(styleSheet);
+      const styleTag = document.createElement('style');
+      styleTag.innerHTML = styles;
+      document.head.appendChild(styleTag);
+      this._log('Styles injected');
     },
 
     /**
-     * Inject personalize button above add to cart
+     * Inject personalize button
      */
     _injectPersonalizeButton: function() {
-      const addToCartButton = document.querySelector(this.config.addToCartSelector);
-      
-      if (!addToCartButton) {
-        console.warn(`[TreatInk SDK] Add to cart button not found with selector: ${this.config.addToCartSelector}`);
-        return;
+      const btn = document.createElement('button');
+      btn.setAttribute('data-treatink-personalize', 'true');
+      btn.className = `${this.config.customizeButtonClass} treatink-personalize-btn`;
+      btn.textContent = this.config.customizeButtonText;
+      btn.type = 'button';
+
+      const addToCartBtn = document.querySelector(this.config.addToCartSelector);
+      if (addToCartBtn && addToCartBtn.parentNode) {
+        addToCartBtn.parentNode.insertBefore(btn, addToCartBtn);
+        this._log('Personalize button injected');
       }
-
-      // Create personalize button
-      const personalizeBtn = document.createElement('button');
-      personalizeBtn.type = 'button';
-      personalizeBtn.className = this.config.customizeButtonClass;
-      personalizeBtn.textContent = this.config.customizeButtonText;
-      personalizeBtn.setAttribute('data-treatink-personalize', 'true');
-
-      // Insert before add to cart button
-      addToCartButton.parentNode.insertBefore(personalizeBtn, addToCartButton);
-
-      // Add click handler
-      personalizeBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.openCustomizer();
-      });
-
-      this._log('Personalize button injected');
     },
 
     /**
-     * Create modal container
+     * Create modal structure
      */
     _createModal: function() {
-      const modalHTML = `
-        <div id="${MODAL_ID}" class="treatink-modal-overlay">
-          <div class="treatink-modal-content">
-            <div class="treatink-modal-header">
-              <h2 class="treatink-modal-title">Personalize Your Product</h2>
-              <button class="treatink-modal-close" aria-label="Close">&times;</button>
-            </div>
-            <div class="treatink-modal-loading">
-              <div class="treatink-modal-loading-spinner"></div>
-              <p>Loading customizer...</p>
-            </div>
-            <iframe class="treatink-modal-iframe" id="treatink-iframe" style="display:none;" sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-presentation" allow="camera; microphone"></iframe>
-          </div>
-        </div>
-      `;
+      const modalOverlay = document.createElement('div');
+      modalOverlay.id = MODAL_ID;
+      modalOverlay.className = 'treatink-modal-overlay';
 
-      document.body.insertAdjacentHTML('beforeend', modalHTML);
+      const modalContent = document.createElement('div');
+      modalContent.className = 'treatink-modal-content';
+
+      const modalHeader = document.createElement('div');
+      modalHeader.className = 'treatink-modal-header';
+
+      const modalTitle = document.createElement('h2');
+      modalTitle.className = 'treatink-modal-title';
+      modalTitle.textContent = 'Personalize Your Product';
+
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'treatink-modal-close';
+      closeBtn.innerHTML = '&times;';
+      closeBtn.type = 'button';
+
+      modalHeader.appendChild(modalTitle);
+      modalHeader.appendChild(closeBtn);
+
+      const iframe = document.createElement('iframe');
+      iframe.className = 'treatink-modal-iframe';
+      iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms allow-popups');
+
+      modalContent.appendChild(modalHeader);
+      modalContent.appendChild(iframe);
+      modalOverlay.appendChild(modalContent);
+      document.body.appendChild(modalOverlay);
+
+      this._log('Modal created');
     },
 
     /**
      * Setup event listeners
      */
     _setupEventListeners: function() {
-      const modal = document.getElementById(MODAL_ID);
-      if (!modal) {
-        console.error('[TreatInk SDK] Modal not found');
-        return;
-      }
-      
-      const closeBtn = modal.querySelector('.treatink-modal-close');
-      
-      // Close button
-      closeBtn.addEventListener('click', () => this.closeCustomizer());
+      const self = this;
 
-      // Click outside modal
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) {
-          this.closeCustomizer();
+      // Personalize button click
+      document.addEventListener('click', (e) => {
+        if (e.target.getAttribute('data-treatink-personalize') === 'true') {
+          self._openModal();
         }
       });
 
-      // Escape key
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && modal.classList.contains('active')) {
-          this.closeCustomizer();
-        }
-      });
-
-      // Listen for messages from iframe
-      window.addEventListener('message', (e) => this._handleIframeMessage(e));
-
-      // Intercept add to cart to include personalization data
-      this._interceptAddToCart();
-    },
-
-    /**
-     * Open customizer modal
-     */
-    openCustomizer: async function() {
-      const modal = document.getElementById(MODAL_ID);
-      const iframe = document.getElementById('treatink-iframe');
-      const loading = modal.querySelector('.treatink-modal-loading');
-      const btn = document.querySelector('[data-treatink-personalize]');
-      
-      if (!modal || !iframe) {
-        console.error('[TreatInk SDK] Modal elements not found');
-        return;
+      // Modal close button
+      const closeBtn = document.querySelector('.treatink-modal-close');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', () => self._closeModal());
       }
 
-      // Disable button
-      if (btn) btn.disabled = true;
-      
-      // Show modal with loading state
-      modal.classList.add('active');
-      document.body.style.overflow = 'hidden';
-      iframe.style.display = 'none';
-      if (loading) loading.style.display = 'block';
-
-      try {
-        // Get or create session
-        let sessionData = this._getPersonalizationSession();
-        
-        if (!sessionData || !sessionData.uuid) {
-          // Create new session via API
-          sessionData = await this._createPersonalizationSession();
-        }
-
-        // Build iframe URL with all necessary parameters
-        const customizeUrl = TREATINK_CONFIG[this.config.environment].customizeUrl;
-        const params = new URLSearchParams({
-          apiMode: 'true',
-          uuid: sessionData.uuid,
-          platform: this.config.platform,
-          productId: this.config.productId,
-          hostname: this.hostname,
-          environment: this.config.environment
-        });
-        
-        const iframeUrl = `${customizeUrl}?${params.toString()}`;
-        
-        this._log(`Opening customizer: ${iframeUrl}`);
-        
-        iframe.src = iframeUrl;
-        
-        // Show iframe when loaded
-        iframe.onload = () => {
-          if (loading) loading.style.display = 'none';
-          iframe.style.display = 'block';
-        };
-
-        // Timeout for iframe load
-        const loadTimeout = setTimeout(() => {
-          if (loading && loading.style.display !== 'none') {
-            console.warn('[TreatInk SDK] Iframe load timeout');
-            if (loading) loading.style.display = 'none';
-            iframe.style.display = 'block';
+      // Click outside modal to close
+      const modalOverlay = document.getElementById(MODAL_ID);
+      if (modalOverlay) {
+        modalOverlay.addEventListener('click', (e) => {
+          if (e.target === modalOverlay) {
+            self._closeModal();
           }
-        }, 10000);
-
-        iframe.addEventListener('load', () => clearTimeout(loadTimeout), { once: true });
-
-      } catch (error) {
-        console.error('[TreatInk SDK] Error opening customizer:', error);
-        alert('Failed to load personalization tool. Please try again.');
-        this.closeCustomizer();
-      } finally {
-        if (btn) btn.disabled = false;
+        });
       }
+
+      // Listen for postMessage from customizer iframe
+      window.addEventListener('message', (event) => {
+        if (event.data.type === 'treatink_personalization_complete') {
+          const payload = event.data.payload;
+          this._log('Personalization complete:', payload);
+          
+          // Save session with the UUID
+          this._savePersonalizationSession({
+            uuid: payload.sessionUuid,
+            productId: this.config.productId,
+            customized: true,
+            customizationData: payload
+          });
+          
+          // Update button to show personalized state
+          this._updateButtonState(true);
+          
+          // Close the modal
+          this._closeModal();
+          
+          // Call user callback if provided
+          if (this.config.onPersonalizationComplete) {
+            this.config.onPersonalizationComplete(payload);
+          }
+        }
+      });
+
+      // Intercept add to cart
+      this._interceptAddToCart();
+
+      this._log('Event listeners setup complete');
     },
 
     /**
-     * Close customizer modal
+     * Open modal and load customizer
      */
-    closeCustomizer: function() {
+    _openModal: function() {
       const modal = document.getElementById(MODAL_ID);
-      const iframe = document.getElementById('treatink-iframe');
-      
       if (!modal) return;
 
-      modal.classList.remove('active');
-      document.body.style.overflow = '';
+      modal.classList.add('active');
+
+      // Create personalization session
+      const session = {
+        uuid: this._generateUUID(),
+        productId: this.config.productId,
+        customized: false,
+        createdAt: new Date().toISOString()
+      };
+
+      this._savePersonalizationSession(session);
+
+      // Build customizer URL
+      const customizeUrl = TREATINK_CONFIG[this.config.environment].customizeUrl;
       
-      // Clear iframe src to stop any ongoing processes
-      if (iframe) iframe.src = 'about:blank';
+      const customizerUrl = `${customizeUrl}?apiMode=true&uuid=${session.uuid}&platform=${this.config.platform}&productId=${this.config.productId}&hostname=${this.hostname}`;
 
-      if (this.config.onPersonalizationClose) {
-        this.config.onPersonalizationClose();
-      }
-
-      this._log('Customizer closed');
-    },
-
-    /**
-     * Create new personalization session via API
-     */
-    _createPersonalizationSession: async function() {
-      try {
-        const supabaseUrl = TREATINK_CONFIG[this.config.environment].supabaseUrl;
-        const endpoint = `${supabaseUrl}/functions/v1/create-personalization-session`;
-        
-        this._log(`Creating session via: ${endpoint}`);
-
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': this.config.apiKey ? `Bearer ${this.config.apiKey}` : ''
-          },
-          body: JSON.stringify({
-            platform: this.config.platform,
-            salesChannelHostname: this.hostname,
-            externalProductId: this.config.productId
-          })
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        
-        if (!data.sessionUuid) {
-          throw new Error('Invalid response: missing sessionUuid');
-        }
-
-        const session = {
-          uuid: data.sessionUuid,
-          productId: this.config.productId,
-          platform: this.config.platform,
-          hostname: this.hostname,
-          createdAt: new Date().toISOString(),
-          customized: false
-        };
-
-        this._savePersonalizationSession(session);
-        this._log('Session created:', session.uuid);
-        return session;
-        
-      } catch (error) {
-        console.error('[TreatInk SDK] Error creating session:', error);
-        throw error;
+      const iframe = modal.querySelector('.treatink-modal-iframe');
+      if (iframe) {
+        iframe.src = customizerUrl;
+        this._log('Modal opened with customizer URL:', customizerUrl);
       }
     },
 
     /**
-     * Handle messages from iframe
+     * Close modal
      */
-    _handleIframeMessage: function(event) {
-      // Verify origin - allow both production and sandbox URLs
-      const allowedOrigins = [
-        'https://treatink.com',
-        'https://sandbox.treatink.com',
-        'http://localhost:5173', // Vite dev
-        'http://localhost:3000',  // React dev
-        'http://localhost:8080'   // Generic dev
-      ];
-      
-      const isAllowedOrigin = allowedOrigins.some(origin => {
-        return event.origin === origin || event.origin.startsWith(origin);
+    _closeModal: function() {
+      const modal = document.getElementById(MODAL_ID);
+      if (modal) {
+        modal.classList.remove('active');
+        this._log('Modal closed');
+      }
+    },
+
+    /**
+     * Generate UUID
+     */
+    _generateUUID: function() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
       });
-
-      if (!isAllowedOrigin) {
-        this._log(`Blocked message from unauthorized origin: ${event.origin}`, 'warn');
-        return;
-      }
-
-      const data = event.data;
-      
-      if (!data || !data.type) {
-        return;
-      }
-
-      this._log(`Received message: ${data.type}`);
-
-      if (data.type === 'treatink_personalization_complete') {
-        // Update session with customization data
-        this._updatePersonalizationSession(data.payload);
-        
-        // Update button state
-        this._updateButtonState(true);
-        
-        // Close modal
-        this.closeCustomizer();
-
-        if (this.config.onPersonalizationComplete) {
-          this.config.onPersonalizationComplete(data.payload);
-        }
-      } else if (data.type === 'treatink_personalization_cancel') {
-        this._log('User cancelled personalization');
-        this.closeCustomizer();
-      } else if (data.type === 'treatink_close_modal') {
-        this.closeCustomizer();
-      } else if (data.type === 'treatink_personalization_error') {
-        console.error('[TreatInk SDK] Personalization error:', data.error);
-        alert('An error occurred: ' + data.error);
-        this.closeCustomizer();
-      }
     },
 
     /**
-     * Get personalization session from localStorage
+     * Get personalization session
      */
     _getPersonalizationSession: function() {
       try {
