@@ -89,6 +89,7 @@
         environment: this.environment,
         customizeButtonText: options.customizeButtonText || 'Personalize This Product',
         customizeButtonClass: options.customizeButtonClass || 'treatink-personalize-btn',
+        personalizeButtonInsertBefore: options.personalizeButtonInsertBefore || null,
         addToCartSelector: options.addToCartSelector || this._getDefaultAddToCartSelector(options.platform),
         onPersonalizationComplete: options.onPersonalizationComplete || null,
         onPersonalizationClose: options.onPersonalizationClose || null,
@@ -352,10 +353,23 @@
       btn.textContent = this.config.customizeButtonText;
       btn.type = 'button';
 
+      // First, try to insert before custom element if specified
+      if (this.config.personalizeButtonInsertBefore) {
+        const customElement = document.getElementById(this.config.personalizeButtonInsertBefore);
+        if (customElement && customElement.parentNode) {
+          customElement.parentNode.insertBefore(btn, customElement);
+          this._log(`Personalize button injected before custom element: ${this.config.personalizeButtonInsertBefore}`);
+          return;
+        } else {
+          this._log(`Custom element not found: ${this.config.personalizeButtonInsertBefore}, falling back to add-to-cart selector`);
+        }
+      }
+
+      // Fallback to add-to-cart button
       const addToCartBtn = document.querySelector(this.config.addToCartSelector);
       if (addToCartBtn && addToCartBtn.parentNode) {
         addToCartBtn.parentNode.insertBefore(btn, addToCartBtn);
-        this._log('Personalize button injected');
+        this._log('Personalize button injected before add-to-cart button');
       }
     },
 
