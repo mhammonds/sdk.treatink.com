@@ -446,13 +446,16 @@
           const payload = event.data.payload;
           this._log('Personalization complete:', payload);
           
-          // Save session with the UUID
+          // Save session locally
           this._savePersonalizationSession({
             uuid: payload.sessionUuid,
             productId: this.config.productId,
             customized: true,
             customizationData: payload
           });
+          
+          // Store in backend for webhook matching
+          this._storePendingPersonalization(payload.sessionUuid, this.config.productId, payload);
           
           // Update button to show personalized state
           this._updateButtonState(true);
@@ -541,6 +544,41 @@
       } catch (error) {
         console.error('[TreatInk SDK] Error creating session:', error);
         return null;
+      }
+    },
+
+    /**
+     * Store pending personalization for webhook order matching
+     * This is called after customization completes, stores data server-side
+     */
+    _storePendingPersonalization: async function(sessionUuid, productId, customizationData) {
+      try {
+        const supabaseUrl = TREATINK_CONFIG[this.config.environment].supabaseUrl;
+        const response = await fetch(`${supabaseUrl}/functions/v1/pending-personalization`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            sessionUuid: sessionUuid,
+            productId: productId,
+            platform: this.config.platform,
+            hostname: this.hostname,
+            customizationData: customizationData
+          })
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('[TreatInk SDK] Failed to store pending personalization:', errorData.error);
+          return false;
+        }
+        
+        this._log('Pending personalization stored:', sessionUuid);
+        return true;
+      } catch (error) {
+        console.error('[TreatInk SDK] Error storing pending personalization:', error);
+        return false;
       }
     },
 
@@ -681,24 +719,27 @@
      * Add to Shopify cart
      */
     _addToShopifyCart: function(form, data) {
-      const personalizationNote = `TreatInk-UUID:${data.uuid}|ProductID:${data.productId}|Hostname:${data.hostname}`;
+      // Store personalization UUID in hidden cart attribute
+      // Cart attributes are hidden from customers and packing slips
+      // They're automatically carried through to the order by Shopify
       
-      // Try to find or create note field
-      let noteInput = form.querySelector('input[name="note"], textarea[name="note"]');
+      // Try to find existing attribute input
+      let attrInput = form.querySelector('input[name="attributes[treatink_personalizations]"]');
       
-      if (noteInput) {
-        const existingNote = noteInput.value;
-        noteInput.value = existingNote ? `${existingNote}\n${personalizationNote}` : personalizationNote;
+      if (attrInput) {
+        // Append to existing list (comma-separated)
+        const existing = attrInput.value;
+        attrInput.value = existing ? `${existing},${data.uuid}` : data.uuid;
       } else {
-        // Create hidden note input
+        // Create new hidden attribute input
         const input = document.createElement('input');
         input.type = 'hidden';
-        input.name = 'note';
-        input.value = personalizationNote;
+        input.name = 'attributes[treatink_personalizations]';
+        input.value = data.uuid;
         form.appendChild(input);
       }
 
-      this._log('Added to Shopify cart note:', personalizationNote);
+      this._log('Added to Shopify cart attribute:', data.uuid);
     },
 
     /**
