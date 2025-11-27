@@ -659,7 +659,7 @@
 
       if (personalized) {
         btn.classList.add('personalized');
-        btn.textContent = '✓ Edit Personalization';
+        btn.textContent = 'Edit Personalization';
         this._log('Button state: personalized');
       } else {
         btn.classList.remove('personalized');
