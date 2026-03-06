@@ -11,11 +11,11 @@
  * - Auto-redirect to cart page
  * - Artwork URL stored as line item property for cart display
  * 
- * New in 1.4.1:
+ * New in 1.4.2:
  * - Session cleared after add-to-cart, allowing multiple personalizations
  * 
  * Usage:
- * <script src="https://sdk.treatink.com/treatink.v1.4.1.js"></script>
+ * <script src="https://sdk.treatink.com/treatink.v1.4.2.js"></script>
  * <script>
  *   TreatInk.init({
  *     platform: 'shopify',
@@ -143,6 +143,21 @@
       if (existingSession && existingSession.customized) {
         this._updateButtonState(true);
       }
+
+      // Handle back-forward cache (bfcache) - recheck session when page is restored
+      const self = this;
+      window.addEventListener('pageshow', function(event) {
+        if (event.persisted) {
+          // Page was restored from bfcache - recheck session state
+          self._log('Page restored from bfcache, rechecking session');
+          const session = self._getPersonalizationSession();
+          if (session && session.customized) {
+            self._updateButtonState(true);
+          } else {
+            self._updateButtonState(false);
+          }
+        }
+      });
 
       this._log('SDK setup complete');
     },
@@ -776,7 +791,7 @@
 
       if (personalized) {
         btn.classList.add('personalized');
-        btn.textContent = 'Edit Personalization';
+        // Keep original button text - don't change to "Edit Personalization"
         this._log('Button state: personalized');
       } else {
         btn.classList.remove('personalized');
@@ -929,6 +944,9 @@
       .then(() => {
         // Clear the session so user can start fresh if they return
         self._clearCurrentSession();
+        
+        // Also reset button state in case of bfcache (back-forward cache)
+        self._updateButtonState(false);
         
         // Redirect to cart page
         self._log('Redirecting to cart...');
