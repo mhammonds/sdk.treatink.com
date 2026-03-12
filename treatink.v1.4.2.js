@@ -15,6 +15,9 @@
  * - Session cleared after add-to-cart, allowing multiple personalizations
  * - Button always shows original text (removed "Edit Personalization" state)
  * - Added buttonInsertTarget option for GemPages and other page builders
+ * - postMessage origin validation against allowed TreatInk domains
+ * - Loading spinner shown in modal between save completion and cart redirect
+ * - PetCustomizer resets state on each new sessionUuid (no stale session stickiness)
  * 
  * Usage:
  * <script src="https://sdk.treatink.com/treatink.v1.4.2.js"></script>
@@ -57,6 +60,12 @@
       customizeUrl: 'https://staging.treatink.com/customizer'
     }
   };
+
+  // Trusted origins for postMessage validation
+  const TRUSTED_ORIGINS = [
+    'https://treatink.com',
+    'https://staging.treatink.com'
+  ];
 
   // Default colors
   const DEFAULT_BUTTON_COLOR = '#EA8000';
@@ -108,7 +117,7 @@
         customizeButtonText: options.customizeButtonText || 'Personalize This Product',
         customizeButtonClass: options.customizeButtonClass || 'treatink-personalize-btn',
         personalizeButtonInsertBefore: options.personalizeButtonInsertBefore || null,
-        buttonInsertTarget: options.buttonInsertTarget || null, // CSS selector for container to insert button into (for GemPages, etc.)
+        buttonInsertTarget: options.buttonInsertTarget || null,
         addToCartSelector: options.addToCartSelector || this._getDefaultAddToCartSelector(options.platform),
         onPersonalizationComplete: options.onPersonalizationComplete || null,
         onPersonalizationClose: options.onPersonalizationClose || null,
@@ -151,7 +160,6 @@
       const self = this;
       window.addEventListener('pageshow', function(event) {
         if (event.persisted) {
-          // Page was restored from bfcache - recheck session state
           self._log('Page restored from bfcache, rechecking session');
           const session = self._getPersonalizationSession();
           if (session && session.customized) {
@@ -182,20 +190,21 @@
      * Calculate a darker shade of a hex color for hover states
      */
     _darkenColor: function(hex, percent) {
-      // Remove # if present
       hex = hex.replace('#', '');
+
+      // Expand 3-digit shorthand to 6-digit
+      if (hex.length === 3) {
+        hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+      }
       
-      // Parse hex to RGB
       let r = parseInt(hex.substring(0, 2), 16);
       let g = parseInt(hex.substring(2, 4), 16);
       let b = parseInt(hex.substring(4, 6), 16);
       
-      // Darken
       r = Math.max(0, Math.floor(r * (1 - percent / 100)));
       g = Math.max(0, Math.floor(g * (1 - percent / 100)));
       b = Math.max(0, Math.floor(b * (1 - percent / 100)));
       
-      // Convert back to hex
       return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
     },
 
@@ -204,6 +213,12 @@
      */
     _hexToRgba: function(hex, alpha) {
       hex = hex.replace('#', '');
+
+      // Expand 3-digit shorthand to 6-digit
+      if (hex.length === 3) {
+        hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+      }
+
       const r = parseInt(hex.substring(0, 2), 16);
       const g = parseInt(hex.substring(2, 4), 16);
       const b = parseInt(hex.substring(4, 6), 16);
@@ -370,13 +385,46 @@
           font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
+        /* ── Saving / adding-to-cart overlay ── */
+        .treatink-saving-overlay {
+          position: absolute;
+          inset: 0;
+          background: rgba(255, 253, 251, 0.97);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 10;
+          border-radius: 0 0 16px 16px;
+        }
+
+        .treatink-saving-inner {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 20px;
+        }
+
+        .treatink-spinner {
+          width: 52px;
+          height: 52px;
+          border: 4px solid rgba(0, 0, 0, 0.1);
+          border-top-color: ${buttonColor};
+          border-radius: 50%;
+          animation: treatinkSpin 0.7s linear infinite;
+        }
+
+        .treatink-saving-text {
+          font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          font-size: 16px;
+          font-weight: 600;
+          color: #0D1221;
+          margin: 0;
+          letter-spacing: 0.3px;
+        }
+
         @keyframes treatinkFadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
 
         @keyframes treatinkSlideUp {
@@ -388,6 +436,10 @@
             transform: translateY(0);
             opacity: 1;
           }
+        }
+
+        @keyframes treatinkSpin {
+          to { transform: rotate(360deg); }
         }
 
         @media (max-width: 768px) {
@@ -411,6 +463,10 @@
             width: 36px;
             height: 36px;
             font-size: 24px;
+          }
+
+          .treatink-saving-overlay {
+            border-radius: 0;
           }
         }
       `;
@@ -533,60 +589,63 @@
       }
 
       // Listen for postMessage from customizer iframe
+      // Only accept messages from trusted TreatInk origins
       window.addEventListener('message', (event) => {
-        // Handle artwork saved message from customizer
-        if (event.data.type === 'treatink_artwork_saved') {
-          this._log('Artwork saved message received:', event.data);
+        // ── Origin validation ─────────────────────────────────────────────────
+        if (!TRUSTED_ORIGINS.includes(event.origin)) {
+          self._log('Ignored postMessage from untrusted origin:', event.origin);
+          return;
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
+        // Primary: artwork saved — show spinner then add to cart
+        if (event.data && event.data.type === 'treatink_artwork_saved') {
+          self._log('Artwork saved message received:', event.data);
           
           const sessionUuid = event.data.sessionUuid;
           const artworkUrl = event.data.artworkUrl;
           
           // Update local session with artwork URL
-          const session = this._getPersonalizationSession();
+          const session = self._getPersonalizationSession();
           if (session) {
             session.customized = true;
             session.uuid = sessionUuid;
             session.artworkUrl = artworkUrl;
-            this._savePersonalizationSession(session);
+            self._savePersonalizationSession(session);
           }
           
-          // Close the modal first
-          this._closeModal();
+          // Replace iframe content with branded loading spinner.
+          // Modal stays visible and open — the spinner dismisses naturally
+          // when window.location.href = '/cart' fires in _autoAddToCartAndRedirect.
+          self._showModalLoadingState();
           
-          // Auto-add to cart and redirect
-          this._autoAddToCartAndRedirect(sessionUuid, artworkUrl);
+          // Add to cart and redirect
+          self._autoAddToCartAndRedirect(sessionUuid, artworkUrl);
           
           // Call user callback if provided
-          if (this.config.onPersonalizationComplete) {
-            this.config.onPersonalizationComplete({ sessionUuid, artworkUrl });
+          if (self.config.onPersonalizationComplete) {
+            self.config.onPersonalizationComplete({ sessionUuid, artworkUrl });
           }
         }
         
         // Legacy support for older message format
-        if (event.data.type === 'treatink_personalization_complete') {
+        if (event.data && event.data.type === 'treatink_personalization_complete') {
           const payload = event.data.payload;
-          this._log('Personalization complete:', payload);
+          self._log('Personalization complete:', payload);
           
-          // Save session locally
-          this._savePersonalizationSession({
+          self._savePersonalizationSession({
             uuid: payload.sessionUuid,
-            productId: this.config.productId,
+            productId: self.config.productId,
             customized: true,
             customizationData: payload
           });
           
-          // Store in backend for webhook matching
-          this._storePendingPersonalization(payload.sessionUuid, this.config.productId, payload);
+          self._storePendingPersonalization(payload.sessionUuid, self.config.productId, payload);
+          self._updateButtonState(true);
+          self._closeModal();
           
-          // Update button to show personalized state
-          this._updateButtonState(true);
-          
-          // Close the modal
-          this._closeModal();
-          
-          // Call user callback if provided
-          if (this.config.onPersonalizationComplete) {
-            this.config.onPersonalizationComplete(payload);
+          if (self.config.onPersonalizationComplete) {
+            self.config.onPersonalizationComplete(payload);
           }
         }
       });
@@ -598,11 +657,52 @@
     },
 
     /**
+     * Show a branded loading spinner inside the modal.
+     * Called after artwork is saved, while the SDK is adding to cart.
+     * The modal remains visible — the page navigation to /cart closes it naturally.
+     */
+    _showModalLoadingState: function() {
+      const modal = document.getElementById(MODAL_ID);
+      if (!modal) return;
+
+      // Clear the iframe so the customizer stops rendering
+      const iframe = modal.querySelector('.treatink-modal-iframe');
+      if (iframe) {
+        iframe.src = 'about:blank';
+        iframe.style.display = 'none';
+      }
+
+      // Prevent duplicate overlays
+      const modalContent = modal.querySelector('.treatink-modal-content');
+      if (modalContent.querySelector('.treatink-saving-overlay')) return;
+
+      const overlay = document.createElement('div');
+      overlay.className = 'treatink-saving-overlay';
+      overlay.innerHTML = `
+        <div class="treatink-saving-inner">
+          <div class="treatink-spinner"></div>
+          <p class="treatink-saving-text">Adding to cart&hellip;</p>
+        </div>
+      `;
+      modalContent.appendChild(overlay);
+
+      this._log('Loading state shown in modal');
+    },
+
+    /**
      * Open modal and load customizer
      */
     _openModal: async function() {
       const modal = document.getElementById(MODAL_ID);
       if (!modal) return;
+
+      // Remove any leftover saving overlay from a previous session
+      const existingOverlay = modal.querySelector('.treatink-saving-overlay');
+      if (existingOverlay) existingOverlay.remove();
+
+      // Restore iframe visibility in case it was hidden by a previous saving state
+      const iframe = modal.querySelector('.treatink-modal-iframe');
+      if (iframe) iframe.style.display = '';
       
       // Create personalization session locally
       const session = {
@@ -634,7 +734,7 @@
       const petTypesParam = this.config.petTypes.join(',');
       const cacheBuster = Date.now();
       const customizerUrl = `${customizeUrl}?apiMode=true&uuid=${dbSession.sessionUuid}&platform=${this.config.platform}&productId=${this.config.productId}&hostname=${this.hostname}&petTypes=${petTypesParam}&fresh=1&t=${cacheBuster}`;
-      const iframe = modal.querySelector('.treatink-modal-iframe');
+
       if (iframe) {
         iframe.src = customizerUrl;
         this._log('Modal opened with customizer URL:', customizerUrl);
@@ -676,7 +776,6 @@
 
     /**
      * Store pending personalization for webhook order matching
-     * This is called after customization completes, stores data server-side
      */
     _storePendingPersonalization: async function(sessionUuid, productId, customizationData) {
       try {
@@ -716,7 +815,6 @@
       const modal = document.getElementById(MODAL_ID);
       if (modal) {
         modal.classList.remove('active');
-        // Clear iframe src to stop any ongoing processes
         const iframe = modal.querySelector('.treatink-modal-iframe');
         if (iframe) {
           iframe.src = 'about:blank';
@@ -726,13 +824,15 @@
     },
 
     /**
-     * Generate UUID
+     * Generate UUID using crypto.getRandomValues for cryptographic randomness
      */
     _generateUUID: function() {
-      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-        const r = (Math.random() * 16) | 0;
-        const v = c === 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
+      if (window.crypto && window.crypto.randomUUID) {
+        return window.crypto.randomUUID();
+      }
+      // Fallback for older browsers
+      return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, function(c) {
+        return (c ^ window.crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16);
       });
     },
 
@@ -809,7 +909,6 @@
 
       if (personalized) {
         btn.classList.add('personalized');
-        // Keep original button text - don't change to "Edit Personalization"
         this._log('Button state: personalized');
       } else {
         btn.classList.remove('personalized');
@@ -836,8 +935,6 @@
           this._log('No personalization to add to cart');
           return;
         }
-
-        // Add personalization UUID to cart
         this._addPersonalizationToCart(form, session);
       });
 
@@ -864,23 +961,17 @@
     _updateShopifyCartAttributes: function(uuid) {
       const self = this;
       
-      // First get current cart to check for existing attributes
       fetch('/cart.js')
         .then(response => response.json())
         .then(cart => {
           const existingAttr = cart.attributes && cart.attributes.treatink_personalizations;
           const newValue = existingAttr ? `${existingAttr},${uuid}` : uuid;
           
-          // Update cart attributes
           return fetch('/cart/update.js', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              attributes: {
-                treatink_personalizations: newValue
-              }
+              attributes: { treatink_personalizations: newValue }
             })
           });
         })
@@ -894,23 +985,25 @@
     },
 
     /**
-     * Auto-add product to cart with personalization and redirect to cart page
-     * Called automatically after artwork is saved
+     * Auto-add product to cart with personalization and redirect to cart page.
+     * Called automatically after artwork is saved. Modal stays open showing
+     * the loading spinner until the page navigates away.
      */
     _autoAddToCartAndRedirect: function(sessionUuid, artworkUrl) {
       const self = this;
       
       if (this.config.platform !== 'shopify') {
         this._log('Auto-add not yet implemented for platform:', this.config.platform);
+        this._updateButtonState(true);
         return;
       }
 
-      // Get the variant ID from the product form
       const variantInput = document.querySelector('input[name="id"]') || 
                           document.querySelector('select[name="id"]');
       
       if (!variantInput) {
         this._log('Could not find variant input, falling back to manual add');
+        this._closeModal();
         this._updateButtonState(true);
         return;
       }
@@ -919,17 +1012,16 @@
       
       if (!variantId) {
         this._log('No variant ID found');
+        this._closeModal();
         this._updateButtonState(true);
         return;
       }
 
       this._log('Auto-adding to cart, variant:', variantId);
 
-      // Get quantity (default to 1)
       const qtyInput = document.querySelector('input[name="quantity"]');
       const quantity = qtyInput ? parseInt(qtyInput.value, 10) || 1 : 1;
 
-      // Build cart item with line item properties
       const cartItem = {
         id: variantId,
         quantity: quantity,
@@ -939,40 +1031,32 @@
         }
       };
 
-      // Add to cart via Shopify AJAX API
       fetch('/cart/add.js', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cartItem)
       })
       .then(response => {
-        if (!response.ok) {
-          throw new Error('Failed to add to cart');
-        }
+        if (!response.ok) throw new Error('Failed to add to cart');
         return response.json();
       })
       .then(item => {
         self._log('Item added to cart:', item);
-        
-        // Also update cart-level attributes for webhook
         return self._updateShopifyCartAttributesAsync(sessionUuid);
       })
       .then(() => {
-        // Clear the session so user can start fresh if they return
+        // Clear session so user can personalize again fresh on return
         self._clearCurrentSession();
-        
-        // Also reset button state in case of bfcache (back-forward cache)
         self._updateButtonState(false);
         
-        // Redirect to cart page
         self._log('Redirecting to cart...');
         window.location.href = '/cart';
       })
       .catch(error => {
         self._log('Error auto-adding to cart:', error);
-        // Fall back to showing the button as personalized
+        // On failure: close the spinner, close the modal, show button as personalized
+        // so the user can still manually add to cart
+        self._closeModal();
         self._updateButtonState(true);
       });
     },
@@ -991,13 +1075,9 @@
           
           return fetch('/cart/update.js', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              attributes: {
-                treatink_personalizations: newValue
-              }
+              attributes: { treatink_personalizations: newValue }
             })
           });
         })
@@ -1019,7 +1099,6 @@
         timestamp: new Date().toISOString()
       };
 
-      // Platform-specific implementations
       if (this.config.platform === 'shopify') {
         this._addToShopifyCart(form, personalizationData);
       } else if (this.config.platform === 'woocommerce') {
@@ -1035,19 +1114,12 @@
      * Add to Shopify cart
      */
     _addToShopifyCart: function(form, data) {
-      // Store personalization UUID in hidden cart attribute
-      // Cart attributes are hidden from customers and packing slips
-      // They're automatically carried through to the order by Shopify
-      
-      // Try to find existing attribute input
       let attrInput = form.querySelector('input[name="attributes[treatink_personalizations]"]');
       
       if (attrInput) {
-        // Append to existing list (comma-separated)
         const existing = attrInput.value;
         attrInput.value = existing ? `${existing},${data.uuid}` : data.uuid;
       } else {
-        // Create new hidden attribute input
         const input = document.createElement('input');
         input.type = 'hidden';
         input.name = 'attributes[treatink_personalizations]';
@@ -1062,7 +1134,6 @@
      * Add to WooCommerce cart
      */
     _addToWooCommerceCart: function(form, data) {
-      // WooCommerce uses custom attributes
       const input = document.createElement('input');
       input.type = 'hidden';
       input.name = 'treatink_uuid';
@@ -1114,7 +1185,6 @@
      * Send order confirmation to TreatInk
      */
     confirmOrder: async function(orderData) {
-      // Use provided personalizations or get all from localStorage
       let personalizedItems = orderData.personalizations;
       if (!personalizedItems) {
         const personalizations = this.getAllPersonalizations();
@@ -1139,9 +1209,7 @@
 
         const response = await fetch(endpoint, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             platform: this.config.platform,
             externalOrderId: orderData.orderId,
@@ -1159,7 +1227,6 @@
         const result = await response.json();
         this._log('Order confirmed:', result);
         
-        // Clear personalizations after successful confirmation
         this.clearPersonalizations();
         
         return result;
@@ -1173,9 +1240,7 @@
      * Internal logging (respects debug flag)
      */
     _log: function(message, data) {
-      if (!this.config || !this.config.debug) {
-        return;
-      }
+      if (!this.config || !this.config.debug) return;
       
       const timestamp = new Date().toLocaleTimeString();
       const prefix = `[TreatInk SDK ${timestamp}]`;
