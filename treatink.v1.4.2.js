@@ -13,6 +13,8 @@
  * 
  * New in 1.4.2:
  * - Session cleared after add-to-cart, allowing multiple personalizations
+ * - Button always shows original text (removed "Edit Personalization" state)
+ * - Added buttonInsertTarget option for GemPages and other page builders
  * 
  * Usage:
  * <script src="https://sdk.treatink.com/treatink.v1.4.2.js"></script>
@@ -106,6 +108,7 @@
         customizeButtonText: options.customizeButtonText || 'Personalize This Product',
         customizeButtonClass: options.customizeButtonClass || 'treatink-personalize-btn',
         personalizeButtonInsertBefore: options.personalizeButtonInsertBefore || null,
+        buttonInsertTarget: options.buttonInsertTarget || null, // CSS selector for container to insert button into (for GemPages, etc.)
         addToCartSelector: options.addToCartSelector || this._getDefaultAddToCartSelector(options.platform),
         onPersonalizationComplete: options.onPersonalizationComplete || null,
         onPersonalizationClose: options.onPersonalizationClose || null,
@@ -428,7 +431,19 @@
       btn.textContent = this.config.customizeButtonText;
       btn.type = 'button';
 
-      // First, try to insert before custom element if specified
+      // First, try to insert into custom target container if specified
+      if (this.config.buttonInsertTarget) {
+        const targetContainer = document.querySelector(this.config.buttonInsertTarget);
+        if (targetContainer) {
+          targetContainer.appendChild(btn);
+          this._log(`Personalize button injected into target container: ${this.config.buttonInsertTarget}`);
+          return;
+        } else {
+          this._log(`Target container not found: ${this.config.buttonInsertTarget}, trying other methods`);
+        }
+      }
+
+      // Second, try to insert before custom element if specified
       if (this.config.personalizeButtonInsertBefore) {
         const customElement = document.getElementById(this.config.personalizeButtonInsertBefore);
         if (customElement && customElement.parentNode) {
@@ -445,6 +460,8 @@
       if (addToCartBtn && addToCartBtn.parentNode) {
         addToCartBtn.parentNode.insertBefore(btn, addToCartBtn);
         this._log('Personalize button injected before add-to-cart button');
+      } else {
+        this._log('Warning: Could not find location to inject personalize button');
       }
     },
 
@@ -615,7 +632,8 @@
       const customizeUrl = TREATINK_CONFIG[this.config.environment].customizeUrl;
       
       const petTypesParam = this.config.petTypes.join(',');
-      const customizerUrl = `${customizeUrl}?apiMode=true&uuid=${dbSession.sessionUuid}&platform=${this.config.platform}&productId=${this.config.productId}&hostname=${this.hostname}&petTypes=${petTypesParam}`;
+      const cacheBuster = Date.now();
+      const customizerUrl = `${customizeUrl}?apiMode=true&uuid=${dbSession.sessionUuid}&platform=${this.config.platform}&productId=${this.config.productId}&hostname=${this.hostname}&petTypes=${petTypesParam}&fresh=1&t=${cacheBuster}`;
       const iframe = modal.querySelector('.treatink-modal-iframe');
       if (iframe) {
         iframe.src = customizerUrl;
