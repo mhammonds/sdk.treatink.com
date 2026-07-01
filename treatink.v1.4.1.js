@@ -1,18 +1,27 @@
 /**
  * TreatInk Personalization SDK
- * Version: 1.2.0
+ * Version: 1.4.0
  * 
  * Embed this script on your product pages to enable TreatInk personalization
  * Optimized for Cloudflare Worker deployment
  * 
+ * New in 1.4.0:
+ * - petTypes option to filter pet selection (dog-only, cat-only, or both)
+ * - Auto-add to cart after personalization saves
+ * - Auto-redirect to cart page
+ * - Artwork URL stored as line item property for cart display
+ * 
  * Usage:
- * <script src="https://sdk.treatink.com/treatink-sdk.js"></script>
+ * <script src="https://sdk.treatink.com/treatink.v1.4.0.js"></script>
  * <script>
  *   TreatInk.init({
  *     platform: 'shopify',
  *     productId: '{{ product.id }}',
  *     apiKey: 'your-api-key',
- *     environment: 'production' // or 'sandbox'
+ *     environment: 'production',
+ *     buttonColor: '#f476b5',    // Optional: customize button color
+ *     headerColor: '#f52b7d',    // Optional: customize modal header color
+ *     petTypes: ['dog']          // Optional: filter pet types - ['dog'], ['cat'], or ['dog', 'cat']
  *   });
  * </script>
  * 
@@ -43,6 +52,10 @@
       customizeUrl: 'https://staging.treatink.com/customizer'
     }
   };
+
+  // Default colors
+  const DEFAULT_BUTTON_COLOR = '#EA8000';
+  const DEFAULT_HEADER_COLOR = '#EA8000';
 
   const STORAGE_KEY = 'treatink_personalizations';
   const MODAL_ID = 'treatink-personalization-modal';
@@ -93,7 +106,12 @@
         addToCartSelector: options.addToCartSelector || this._getDefaultAddToCartSelector(options.platform),
         onPersonalizationComplete: options.onPersonalizationComplete || null,
         onPersonalizationClose: options.onPersonalizationClose || null,
-        debug: options.debug || false
+        debug: options.debug || false,
+        // Color customization options
+        buttonColor: options.buttonColor || DEFAULT_BUTTON_COLOR,
+        headerColor: options.headerColor || DEFAULT_HEADER_COLOR,
+        // Pet type filtering - array of allowed types: ['dog'], ['cat'], or ['dog', 'cat']
+        petTypes: options.petTypes || ['dog', 'cat']
       };
 
       this.initialized = true;
@@ -140,9 +158,48 @@
     },
 
     /**
+     * Calculate a darker shade of a hex color for hover states
+     */
+    _darkenColor: function(hex, percent) {
+      // Remove # if present
+      hex = hex.replace('#', '');
+      
+      // Parse hex to RGB
+      let r = parseInt(hex.substring(0, 2), 16);
+      let g = parseInt(hex.substring(2, 4), 16);
+      let b = parseInt(hex.substring(4, 6), 16);
+      
+      // Darken
+      r = Math.max(0, Math.floor(r * (1 - percent / 100)));
+      g = Math.max(0, Math.floor(g * (1 - percent / 100)));
+      b = Math.max(0, Math.floor(b * (1 - percent / 100)));
+      
+      // Convert back to hex
+      return '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('');
+    },
+
+    /**
+     * Convert hex to rgba for box shadows
+     */
+    _hexToRgba: function(hex, alpha) {
+      hex = hex.replace('#', '');
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    },
+
+    /**
      * Inject CSS styles
      */
     _injectStyles: function() {
+      const buttonColor = this.config.buttonColor;
+      const buttonHoverColor = this._darkenColor(buttonColor, 10);
+      const buttonShadowColor = this._hexToRgba(buttonColor, 0.25);
+      
+      const headerColor = this.config.headerColor;
+      const headerGradientEnd = this._darkenColor(headerColor, 10);
+
       const styles = `
         @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Mitr:wght@400;600;700&display=swap');
 
@@ -150,7 +207,7 @@
           display: inline-block;
           padding: 12px 24px;
           margin-bottom: 12px;
-          background-color: #EA8000;
+          background-color: ${buttonColor};
           color: #FFFDFB;
           border: none;
           border-radius: 8px;
@@ -167,9 +224,9 @@
         }
 
         .treatink-personalize-btn:hover {
-          background-color: #D67A00;
+          background-color: ${buttonHoverColor};
           transform: translateY(-2px);
-          box-shadow: 0 8px 20px rgba(234, 128, 0, 0.25);
+          box-shadow: 0 8px 20px ${buttonShadowColor};
         }
 
         .treatink-personalize-btn:active {
@@ -235,7 +292,7 @@
           justify-content: space-between;
           align-items: center;
           padding: 24px 32px;
-          background: linear-gradient(135deg, #EA8000 0%, #D67A00 100%);
+          background: linear-gradient(135deg, ${headerColor} 0%, ${headerGradientEnd} 100%);
           border-radius: 16px 16px 0 0;
           flex-shrink: 0;
         }
@@ -442,6 +499,35 @@
 
       // Listen for postMessage from customizer iframe
       window.addEventListener('message', (event) => {
+        // Handle artwork saved message from customizer
+        if (event.data.type === 'treatink_artwork_saved') {
+          this._log('Artwork saved message received:', event.data);
+          
+          const sessionUuid = event.data.sessionUuid;
+          const artworkUrl = event.data.artworkUrl;
+          
+          // Update local session with artwork URL
+          const session = this._getPersonalizationSession();
+          if (session) {
+            session.customized = true;
+            session.uuid = sessionUuid;
+            session.artworkUrl = artworkUrl;
+            this._savePersonalizationSession(session);
+          }
+          
+          // Close the modal first
+          this._closeModal();
+          
+          // Auto-add to cart and redirect
+          this._autoAddToCartAndRedirect(sessionUuid, artworkUrl);
+          
+          // Call user callback if provided
+          if (this.config.onPersonalizationComplete) {
+            this.config.onPersonalizationComplete({ sessionUuid, artworkUrl });
+          }
+        }
+        
+        // Legacy support for older message format
         if (event.data.type === 'treatink_personalization_complete') {
           const payload = event.data.payload;
           this._log('Personalization complete:', payload);
@@ -500,13 +586,18 @@
         return;
       }
       
+      // Update local session with database UUID
+      session.uuid = dbSession.sessionUuid;
+      this._savePersonalizationSession(session);
+      
       // Show modal only after successful session creation
       modal.classList.add('active');
       
       // Build customizer URL using the sessionUuid from database
       const customizeUrl = TREATINK_CONFIG[this.config.environment].customizeUrl;
       
-      const customizerUrl = `${customizeUrl}?apiMode=true&uuid=${dbSession.sessionUuid}&platform=${this.config.platform}&productId=${this.config.productId}&hostname=${this.hostname}`;
+      const petTypesParam = this.config.petTypes.join(',');
+      const customizerUrl = `${customizeUrl}?apiMode=true&uuid=${dbSession.sessionUuid}&platform=${this.config.platform}&productId=${this.config.productId}&hostname=${this.hostname}&petTypes=${petTypesParam}`;
       const iframe = modal.querySelector('.treatink-modal-iframe');
       if (iframe) {
         iframe.src = customizerUrl;
@@ -589,6 +680,11 @@
       const modal = document.getElementById(MODAL_ID);
       if (modal) {
         modal.classList.remove('active');
+        // Clear iframe src to stop any ongoing processes
+        const iframe = modal.querySelector('.treatink-modal-iframe');
+        if (iframe) {
+          iframe.src = 'about:blank';
+        }
         this._log('Modal closed');
       }
     },
@@ -672,12 +768,14 @@
      * Intercept add to cart to include personalization UUID
      */
     _interceptAddToCart: function() {
+      const self = this;
       const addToCartButton = document.querySelector(this.config.addToCartSelector);
       if (!addToCartButton) return;
 
       const form = addToCartButton.closest('form');
       if (!form) return;
 
+      // Method 1: Traditional form submit listener
       form.addEventListener('submit', (e) => {
         const session = this._getPersonalizationSession();
         if (!session || !session.customized) {
@@ -689,7 +787,165 @@
         this._addPersonalizationToCart(form, session);
       });
 
+      // Method 2: Click listener for AJAX add-to-cart themes
+      addToCartButton.addEventListener('click', function() {
+        const session = self._getPersonalizationSession();
+        if (!session || !session.customized) {
+          self._log('No personalization for AJAX cart');
+          return;
+        }
+
+        // Wait for AJAX to complete, then update cart attributes
+        setTimeout(function() {
+          self._updateShopifyCartAttributes(session.uuid);
+        }, 1000);
+      });
+
       this._log('Add to cart interceptor installed');
+    },
+
+    /**
+     * Update Shopify cart attributes via AJAX API
+     */
+    _updateShopifyCartAttributes: function(uuid) {
+      const self = this;
+      
+      // First get current cart to check for existing attributes
+      fetch('/cart.js')
+        .then(response => response.json())
+        .then(cart => {
+          const existingAttr = cart.attributes && cart.attributes.treatink_personalizations;
+          const newValue = existingAttr ? `${existingAttr},${uuid}` : uuid;
+          
+          // Update cart attributes
+          return fetch('/cart/update.js', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              attributes: {
+                treatink_personalizations: newValue
+              }
+            })
+          });
+        })
+        .then(response => response.json())
+        .then(cart => {
+          self._log('Cart attributes updated via AJAX:', cart.attributes);
+        })
+        .catch(error => {
+          self._log('Error updating cart attributes:', error);
+        });
+    },
+
+    /**
+     * Auto-add product to cart with personalization and redirect to cart page
+     * Called automatically after artwork is saved
+     */
+    _autoAddToCartAndRedirect: function(sessionUuid, artworkUrl) {
+      const self = this;
+      
+      if (this.config.platform !== 'shopify') {
+        this._log('Auto-add not yet implemented for platform:', this.config.platform);
+        return;
+      }
+
+      // Get the variant ID from the product form
+      const variantInput = document.querySelector('input[name="id"]') || 
+                          document.querySelector('select[name="id"]');
+      
+      if (!variantInput) {
+        this._log('Could not find variant input, falling back to manual add');
+        this._updateButtonState(true);
+        return;
+      }
+
+      const variantId = variantInput.value;
+      
+      if (!variantId) {
+        this._log('No variant ID found');
+        this._updateButtonState(true);
+        return;
+      }
+
+      this._log('Auto-adding to cart, variant:', variantId);
+
+      // Get quantity (default to 1)
+      const qtyInput = document.querySelector('input[name="quantity"]');
+      const quantity = qtyInput ? parseInt(qtyInput.value, 10) || 1 : 1;
+
+      // Build cart item with line item properties
+      const cartItem = {
+        id: variantId,
+        quantity: quantity,
+        properties: {
+          '_treatink_uuid': sessionUuid,
+          '_treatink_artwork': artworkUrl || ''
+        }
+      };
+
+      // Add to cart via Shopify AJAX API
+      fetch('/cart/add.js', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(cartItem)
+      })
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Failed to add to cart');
+        }
+        return response.json();
+      })
+      .then(item => {
+        self._log('Item added to cart:', item);
+        
+        // Also update cart-level attributes for webhook
+        return self._updateShopifyCartAttributesAsync(sessionUuid);
+      })
+      .then(() => {
+        // Redirect to cart page
+        self._log('Redirecting to cart...');
+        window.location.href = '/cart';
+      })
+      .catch(error => {
+        self._log('Error auto-adding to cart:', error);
+        // Fall back to showing the button as personalized
+        self._updateButtonState(true);
+      });
+    },
+
+    /**
+     * Update Shopify cart attributes (async version that returns promise)
+     */
+    _updateShopifyCartAttributesAsync: function(uuid) {
+      const self = this;
+      
+      return fetch('/cart.js')
+        .then(response => response.json())
+        .then(cart => {
+          const existingAttr = cart.attributes && cart.attributes.treatink_personalizations;
+          const newValue = existingAttr ? `${existingAttr},${uuid}` : uuid;
+          
+          return fetch('/cart/update.js', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              attributes: {
+                treatink_personalizations: newValue
+              }
+            })
+          });
+        })
+        .then(response => response.json())
+        .then(cart => {
+          self._log('Cart attributes updated:', cart.attributes);
+          return cart;
+        });
     },
 
     /**
@@ -798,12 +1054,6 @@
      * Send order confirmation to TreatInk
      */
     confirmOrder: async function(orderData) {
-      // For POC, don't require API key
-      // if (!this.config.apiKey) {
-      //   console.error('[TreatInk SDK] API key required for order confirmation');
-      //   return null;
-      // }
-
       // Use provided personalizations or get all from localStorage
       let personalizedItems = orderData.personalizations;
       if (!personalizedItems) {
@@ -862,7 +1112,7 @@
     /**
      * Internal logging (respects debug flag)
      */
-    _log: function(message, level = 'log') {
+    _log: function(message, data) {
       if (!this.config || !this.config.debug) {
         return;
       }
@@ -870,10 +1120,8 @@
       const timestamp = new Date().toLocaleTimeString();
       const prefix = `[TreatInk SDK ${timestamp}]`;
       
-      if (level === 'warn') {
-        console.warn(prefix, message);
-      } else if (level === 'error') {
-        console.error(prefix, message);
+      if (data !== undefined) {
+        console.log(prefix, message, data);
       } else {
         console.log(prefix, message);
       }

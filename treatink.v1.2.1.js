@@ -672,12 +672,14 @@
      * Intercept add to cart to include personalization UUID
      */
     _interceptAddToCart: function() {
+      const self = this;
       const addToCartButton = document.querySelector(this.config.addToCartSelector);
       if (!addToCartButton) return;
 
       const form = addToCartButton.closest('form');
       if (!form) return;
 
+      // Method 1: Traditional form submit listener
       form.addEventListener('submit', (e) => {
         const session = this._getPersonalizationSession();
         if (!session || !session.customized) {
@@ -689,7 +691,56 @@
         this._addPersonalizationToCart(form, session);
       });
 
+      // Method 2: Click listener for AJAX add-to-cart themes
+      addToCartButton.addEventListener('click', function() {
+        const session = self._getPersonalizationSession();
+        if (!session || !session.customized) {
+          self._log('No personalization for AJAX cart');
+          return;
+        }
+
+        // Wait for AJAX to complete, then update cart attributes
+        setTimeout(function() {
+          self._updateShopifyCartAttributes(session.uuid);
+        }, 1000);
+      });
+
       this._log('Add to cart interceptor installed');
+    },
+
+    /**
+     * Update Shopify cart attributes via AJAX API
+     */
+    _updateShopifyCartAttributes: function(uuid) {
+      const self = this;
+      
+      // First get current cart to check for existing attributes
+      fetch('/cart.js')
+        .then(response => response.json())
+        .then(cart => {
+          const existingAttr = cart.attributes && cart.attributes.treatink_personalizations;
+          const newValue = existingAttr ? `${existingAttr},${uuid}` : uuid;
+          
+          // Update cart attributes
+          return fetch('/cart/update.js', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              attributes: {
+                treatink_personalizations: newValue
+              }
+            })
+          });
+        })
+        .then(response => response.json())
+        .then(cart => {
+          self._log('Cart attributes updated via AJAX:', cart.attributes);
+        })
+        .catch(error => {
+          self._log('Error updating cart attributes:', error);
+        });
     },
 
     /**
